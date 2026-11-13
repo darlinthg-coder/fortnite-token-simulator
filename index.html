@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simulador Tienda Pirata | Cazadores de Tesoros</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Burbank+Big+Condensed:wght@700;900&family=Montserrat:wght@500;700;800;900&display=swap');
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #090d16 75%);
+      color: #f8fafc;
+      min-height: 100vh;
+      overflow-x: hidden;
+      user-select: none;
+    }
+
+    .fortnite-title {
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+      font-style: italic;
+    }
+
+    /* Escenario del Cofre */
+    .chest-stage {
+      position: relative;
+      width: 240px;
+      height: 220px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .chest-aura {
+      position: absolute;
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(250, 204, 21, 0.35) 0%, rgba(245, 158, 11, 0.1) 45%, transparent 70%);
+      animation: auraPulse 2.8s infinite ease-in-out;
+      pointer-events: none;
+      transition: all 0.3s ease;
+    }
+
+    .chest-aura.opening {
+      transform: scale(1.25);
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.45) 0%, rgba(14, 165, 233, 0.15) 50%, transparent 75%);
+    }
+
+    .chest-aura.opened-empty {
+      background: radial-gradient(circle, rgba(251, 191, 36, 0.45) 0%, rgba(217, 119, 6, 0.15) 50%, transparent 75%);
+    }
+
+    .chest-aura.opened-token {
+      transform: scale(1.5);
+      background: radial-gradient(circle, rgba(253, 224, 71, 0.85) 0%, rgba(234, 179, 8, 0.4) 55%, transparent 80%);
+    }
+
+    @keyframes auraPulse {
+      0%, 100% { transform: scale(0.95); opacity: 0.75; }
+      50% { transform: scale(1.08); opacity: 1; }
+    }
+
+    .chest-wrapper {
+      position: relative;
+      width: 210px;
+      height: 185px;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 10;
+    }
+
+    .chest-stage:hover .chest-wrapper:not(.is-opening):not(.is-cooldown) {
+      transform: translateY(-4px) scale(1.03);
+    }
+
+    .chest-stage:active .chest-wrapper:not(.is-opening):not(.is-cooldown) {
+      transform: scale(0.97);
+    }
+
+    .chest-wrapper.is-opening {
+      animation: chestVibrate 0.12s infinite linear;
+    }
+
+    .chest-wrapper.is-cooldown {
+      opacity: 0.65;
+      filter: grayscale(0.35);
+      cursor: not-allowed;
+    }
+
+    @keyframes chestVibrate {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      25% { transform: translate(-2.5px, 1.5px) rotate(-1.2deg); }
+      50% { transform: translate(2.5px, -1.5px) rotate(1.2deg); }
+      75% { transform: translate(-2px, -1px) rotate(-0.8deg); }
+      100% { transform: translate(2px, 1px) rotate(0.8deg); }
+    }
+
+    /* Haz de luz interior al abrirse */
+    .chest-beam {
+      position: absolute;
+      bottom: 62px;
+      left: 50%;
+      transform: translateX(-50%) scaleY(0);
+      transform-origin: bottom center;
+      width: 150px;
+      height: 150px;
+      background: linear-gradient(to top, rgba(253, 224, 71, 0.9), rgba(251, 191, 36, 0.25) 60%, transparent 100%);
+      clip-path: polygon(20% 100%, 80% 100%, 100% 0%, 0% 0%);
+      pointer-events: none;
+      opacity: 0;
+      transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+      z-index: 5;
+    }
+
+    .chest-beam.active {
+      transform: translateX(-50%) scaleY(1);
+      opacity: 1;
+    }
+
+    .chest-beam.token-beam {
+      width: 190px;
+      height: 185px;
+      background: linear-gradient(to top, rgba(254, 240, 138, 1), rgba(250, 204, 21, 0.6) 65%, transparent 100%);
+    }
+
+    /* Tapa del cofre SVG */
+    #chestLidGroup {
+      transform-origin: 105px 84px;
+      transition: transform 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .chest-open #chestLidGroup {
+      transform: translateY(-24px) rotate(-14deg);
+    }
+
+    /* Partículas flotantes */
+    .sparkle {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #fde047;
+      box-shadow: 0 0 8px #facc15;
+      pointer-events: none;
+      animation: floatSparkle 1.4s ease-out forwards;
+      z-index: 20;
+    }
+
+    @keyframes floatSparkle {
+      0% { transform: translate(0, 0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+    }
+
+    /* Anillo de progreso [E] estilo Fortnite */
+    .interact-ring-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 30;
+      pointer-events: none;
+    }
+
+    .ring-circle {
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+
+    /* Tarjeta motivadora / Token */
+    @keyframes popCard {
+      0% { transform: translateY(14px) scale(0.92); opacity: 0; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .animate-pop-card {
+      animation: popCard 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    .token-glow {
+      box-shadow: 0 0 40px rgba(250, 204, 21, 0.6), inset 0 0 25px rgba(253, 224, 71, 0.35);
+      border-color: #fde047;
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-between py-6 px-4">
+
+  <!-- Encabezado -->
+  <header class="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+    <div class="flex items-center gap-3">
+      <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-600 flex items-center justify-center shadow-lg shadow-amber-500/20 border border-amber-200/40">
+        <svg class="w-6 h-6 text-slate-950" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+        </svg>
+      </div>
+      <div>
+        <span class="text-[11px] font-extrabold tracking-widest uppercase text-amber-400">Evento Cazadores de Tesoros</span>
+        <h1 class="text-xl sm:text-2xl fortnite-title text-white leading-none">Simulador Tienda Pirata</h1>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <button id="soundToggleBtn" type="button" class="px-3 py-2 rounded-lg bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 flex items-center gap-1.5 transition cursor-pointer">
+        <span id="soundIcon">🔊</span>
+        <span id="soundLabel">Sonido ON</span>
+      </button>
+      <button id="resetBtn" type="button" class="px-3 py-2 rounded-lg bg-rose-950/70 hover:bg-rose-900/80 border border-rose-800/70 text-xs font-bold text-rose-200 transition cursor-pointer">
+        Reiniciar
+      </button>
+    </div>
+  </header>
+
+  <!-- Contenido Principal -->
+  <main class="w-full max-w-4xl my-auto py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    <!-- Columna Izquierda: Cofre Interactivo y Controles -->
+    <section class="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-2xl p-6 flex flex-col items-center shadow-2xl relative overflow-hidden">
+
+      <!-- Controles de Modo y Hora del Tesoro -->
+      <div class="w-full flex flex-col sm:flex-row items-center justify-between gap-3 mb-5 z-20">
+        <!-- Selector de Equipo -->
+        <div class="inline-flex rounded-xl bg-slate-950 p-1 border border-slate-800 w-full sm:w-auto">
+          <button id="modeSoloBtn" type="button" class="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wide transition cursor-pointer bg-sky-500 text-slate-950 shadow-md shadow-sky-500/25">
+            En Solitario (1x)
+          </button>
+          <button id="modeSquadBtn" type="button" class="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wide transition cursor-pointer text-slate-400 hover:text-white">
+            Escuadrón (4x)
+          </button>
+        </div>
+
+        <!-- Interruptor Hora del Tesoro -->
+        <button id="treasureHourBtn" type="button" class="w-full sm:w-auto px-3.5 py-2 rounded-xl border border-slate-700 bg-slate-950/90 hover:border-amber-500/60 text-xs font-extrabold uppercase tracking-wide flex items-center justify-center gap-2 transition cursor-pointer text-slate-300">
+          <span id="treasureHourDot" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+          <span>Hora del Tesoro (2x)</span>
+        </button>
+      </div>
+
+      <!-- Indicador de Probabilidad Actual -->
+      <div class="w-full bg-slate-950/70 border border-slate-800/90 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs mb-4 z-20">
+        <span class="text-slate-400 font-semibold">Probabilidad por intento:</span>
+        <span id="currentOddsLabel" class="font-extrabold text-amber-400">1 en 137,500 (0.00073%)</span>
+      </div>
+
+      <!-- Escenario del Cofre -->
+      <div id="chestStage" class="chest-stage my-2" title="Haz clic o pulsa [E] / [Espacio] para abrir">
+        <div id="chestAura" class="chest-aura"></div>
+        <div id="chestBeam" class="chest-beam"></div>
+
+        <!-- Anillo de Interacción estilo Fortnite -->
+        <div id="interactOverlay" class="interact-ring-overlay hidden">
+          <div class="relative w-20 h-20 flex items-center justify-center bg-slate-950/85 rounded-full border border-sky-400/50 shadow-xl backdrop-blur-sm">
+            <svg class="w-20 h-20 absolute inset-0" viewBox="0 0 80 80">
+              <circle cx="40" cy="40" r="34" stroke="rgba(56,189,248,0.2)" stroke-width="5" fill="none" />
+              <circle id="ringProgressCircle" class="ring-circle" cx="40" cy="40" r="34" stroke="#38bdf8" stroke-width="5" stroke-linecap="round" fill="none" stroke-dasharray="213.6" stroke-dashoffset="213.6" />
+            </svg>
+            <div class="flex flex-col items-center">
+              <span class="px-2 py-0.5 rounded bg-sky-400 text-slate-950 font-black text-xs leading-none">E</span>
+              <span id="ringTimerText" class="text-[11px] font-extrabold text-sky-300 mt-1">1.5s</span>
+            </div>
+          </div>
+          <span class="mt-2 px-3 py-0.5 rounded-full bg-slate-950/90 border border-sky-500/40 text-[11px] font-bold text-sky-200 tracking-wide">
+            Abriendo cofre...
+          </span>
+        </div>
+
+        <!-- Diseño SVG Detallado del Cofre Pirata Legendario -->
+        <div id="chestWrapper" class="chest-wrapper">
+          <svg viewBox="0 0 210 185" class="w-full h-full drop-shadow-[0_14px_20px_rgba(0,0,0,0.75)]">
+            <defs>
+              <!-- Gradientes de Madera -->
+              <linearGradient id="woodBody" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#78350f" />
+                <stop offset="50%" stop-color="#5c280b" />
+                <stop offset="100%" stop-color="#3b1806" />
+              </linearGradient>
+              <linearGradient id="woodLid" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#92400e" />
+                <stop offset="65%" stop-color="#78350f" />
+                <stop offset="100%" stop-color="#451a03" />
+              </linearGradient>
+              <!-- Gradientes de Oro Metálico -->
+              <linearGradient id="goldTrim" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#fef08a" />
+                <stop offset="35%" stop-color="#facc15" />
+                <stop offset="70%" stop-color="#d97706" />
+                <stop offset="100%" stop-color="#92400e" />
+              </linearGradient>
+              <linearGradient id="goldDark" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#b45309" />
+                <stop offset="100%" stop-color="#78350f" />
+              </linearGradient>
+              <!-- Interior Brillante -->
+              <linearGradient id="innerGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#fef9c3" />
+                <stop offset="100%" stop-color="#f59e0b" />
+              </linearGradient>
+            </defs>
+
+            <!-- Sombra base -->
+            <ellipse cx="105" cy="172" rx="84" ry="10" fill="rgba(0,0,0,0.55)" />
+
+            <!-- Interior resplandeciente (visible al levantarse la tapa) -->
+            <rect x="28" y="68" width="154" height="32" rx="6" fill="url(#innerGlow)" />
+
+            <!-- BASE DEL COFRE -->
+            <g id="chestBaseGroup">
+              <!-- Cuerpo de madera -->
+              <path d="M26 84 H184 L176 164 C175 168 171 170 166 170 H44 C39 170 35 168 34 164 L26 84 Z" fill="url(#woodBody)" stroke="#291003" stroke-width="2.5" />
+
+              <!-- Tablones horizontales -->
+              <line x1="28" y1="112" x2="182" y2="112" stroke="#3b1806" stroke-width="2.5" />
+              <line x1="31" y1="140" x2="179" y2="140" stroke="#3b1806" stroke-width="2.5" />
+
+              <!-- Correas verticales de oro laterales -->
+              <path d="M36 84 H54 L59 170 H43 Z" fill="url(#goldTrim)" stroke="#78350f" stroke-width="1.5" />
+              <path d="M156 84 H174 L167 170 H151 Z" fill="url(#goldTrim)" stroke="#78350f" stroke-width="1.5" />
+
+              <!-- Marco superior de la base -->
+              <rect x="23" y="81" width="164" height="10" rx="3" fill="url(#goldTrim)" stroke="#78350f" stroke-width="1.5" />
+
+              <!-- Remaches metálicos inferiores -->
+              <circle cx="46" cy="102" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+              <circle cx="48" cy="128" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+              <circle cx="50" cy="154" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+
+              <circle cx="164" cy="102" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+              <circle cx="162" cy="128" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+              <circle cx="160" cy="154" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+
+              <!-- Placa base de la cerradura -->
+              <path d="M84 86 H126 L122 128 C121 134 114 139 105 141 C96 139 89 134 88 128 L84 86 Z" fill="url(#goldDark)" stroke="#451a03" stroke-width="1.5" />
+            </g>
+
+            <!-- TAPA ABATIBLE DEL COFRE -->
+            <g id="chestLidGroup">
+              <!-- Cúpula de madera -->
+              <path d="M22 82 L30 42 C33 28 46 22 62 22 H148 C164 22 177 28 180 42 L188 82 Z" fill="url(#woodLid)" stroke="#291003" stroke-width="2.5" />
+
+              <!-- Vetas curvas de la tapa -->
+              <path d="M27 56 Q105 50 183 56" fill="none" stroke="#451a03" stroke-width="2.5" />
+
+              <!-- Correas de oro en la tapa -->
+              <path d="M35 28 L52 24 L54 82 H34 Z" fill="url(#goldTrim)" stroke="#78350f" stroke-width="1.5" />
+              <path d="M158 24 L175 28 L176 82 H156 Z" fill="url(#goldTrim)" stroke="#78350f" stroke-width="1.5" />
+
+              <!-- Banda central de oro -->
+              <rect x="93" y="22" width="24" height="60" fill="url(#goldTrim)" stroke="#78350f" stroke-width="1.5" />
+
+              <!-- Borde inferior dorado de la tapa -->
+              <rect x="20" y="74" width="170" height="11" rx="4" fill="url(#goldTrim)" stroke="#78350f" stroke-width="1.5" />
+
+              <!-- Remaches de la tapa -->
+              <circle cx="44" cy="42" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+              <circle cx="44" cy="63" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+              <circle cx="166" cy="42" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+              <circle cx="166" cy="63" r="2.8" fill="#fef9c3" stroke="#92400e" stroke-width="1" />
+
+              <!-- Emblema Escudo / Calavera Pirata en el cierre -->
+              <circle cx="105" cy="82" r="21" fill="url(#goldTrim)" stroke="#78350f" stroke-width="2.5" />
+              <circle cx="105" cy="82" r="15" fill="#1e293b" stroke="#b45309" stroke-width="1.5" />
+              <!-- Calavera estilizada -->
+              <circle cx="105" cy="79" r="6.5" fill="#fef08a" />
+              <rect x="101.5" y="83.5" width="7" height="4.5" rx="1.5" fill="#fef08a" />
+              <circle cx="102.5" cy="79" r="1.5" fill="#1e293b" />
+              <circle cx="107.5" cy="79" r="1.5" fill="#1e293b" />
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Botón Principal de Acción -->
+      <button id="openChestBtn" type="button" class="mt-3 w-full max-w-sm py-3.5 px-6 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-400 active:scale-[0.98] text-slate-950 font-black uppercase tracking-wider text-sm sm:text-base shadow-lg shadow-amber-500/25 border border-yellow-200 transition flex items-center justify-center gap-2.5 cursor-pointer z-20">
+        <span class="px-2 py-0.5 rounded bg-slate-950/90 text-amber-300 text-xs font-black">E</span>
+        <span id="openBtnText">Abrir Cofre</span>
+      </button>
+
+      <!-- Barra de Estado / Enfriamiento -->
+      <div class="w-full max-w-sm mt-3">
+        <div class="flex justify-between text-[11px] font-bold text-slate-400 mb-1">
+          <span id="statusText">Listo para abrir</span>
+          <span id="cycleTimeText">Ciclo real: 2.5s</span>
+        </div>
+        <div class="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+          <div id="cooldownBar" class="h-full bg-amber-400 w-0 transition-all duration-75"></div>
+        </div>
+      </div>
+
+      <!-- Tarjeta de Resultado (Frase Motivadora o Token Ganado) -->
+      <div id="resultContainer" class="w-full mt-5 min-h-[108px] flex items-center justify-center z-20">
+        <div class="w-full rounded-xl border border-dashed border-slate-700/80 bg-slate-950/50 p-4 text-center">
+          <p class="text-xs font-semibold text-slate-400">
+            Pulsa <span class="text-amber-400 font-bold">Abrir Cofre</span> o presiona <span class="text-sky-400 font-bold">[E]</span> / <span class="text-sky-400 font-bold">[Espacio]</span> para probar tu suerte.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Columna Derecha: Estadísticas Separadas y Premio Único -->
+    <aside class="lg:col-span-5 flex flex-col gap-5">
+
+      <!-- Premio Único Objetivo -->
+      <div class="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/30 border border-amber-500/40 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-[10px] font-black uppercase tracking-widest text-amber-300">
+            Recompensa Única
+          </span>
+          <span id="tokensWonBadge" class="text-xs font-extrabold text-slate-400">
+            Obtenidos: <strong id="tokensWonCount" class="text-amber-400">0</strong>
+          </span>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-300 via-amber-500 to-orange-600 p-0.5 shrink-0 shadow-lg shadow-amber-500/20">
+            <div class="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
+              <svg class="w-9 h-9 text-amber-400" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v4h4v2h-4v4h-2v-4H7v-2h4V7z"/>
+              </svg>
+            </div>
+          </div>
+          <div>
+            <h2 class="text-base fortnite-title text-amber-300">Token Tienda Pirata</h2>
+            <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+              Acceso gratuito durante <strong class="text-white">14 días</strong> a los cosméticos de la tienda diaria (2 activaciones).
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contadores Separados: En Solitario vs Escuadrón -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
+        <h3 class="text-xs font-black uppercase tracking-widest text-slate-400 mb-3.5">
+          Registro de Cofres Abiertos
+        </h3>
+
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          <!-- Contador En Solitario -->
+          <div class="bg-slate-950/90 border border-sky-500/30 rounded-xl p-3.5">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[11px] font-extrabold uppercase text-sky-400">En Solitario</span>
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300">1x</span>
+            </div>
+            <p id="soloChestsCount" class="text-2xl font-black text-white">0</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">cofres abiertos</p>
+          </div>
+
+          <!-- Contador Escuadrón -->
+          <div class="bg-slate-950/90 border border-purple-500/30 rounded-xl p-3.5">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[11px] font-extrabold uppercase text-purple-400">Escuadrón</span>
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300">4x</span>
+            </div>
+            <p id="squadChestsCount" class="text-2xl font-black text-white">0</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">cofres abiertos</p>
+          </div>
+        </div>
+
+        <!-- Total Global y Estadísticas -->
+        <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400 font-semibold">Total Global de Tiradas:</span>
+            <span id="totalChestsCount" class="text-sm font-black text-amber-400">0</span>
+          </div>
+          <div class="flex items-center justify-between text-xs border-t border-slate-800/80 pt-2">
+            <span class="text-slate-400 font-semibold">Probabilidad Acumulada:</span>
+            <span id="cumulativeProbText" class="font-extrabold text-emerald-400">0.0000%</span>
+          </div>
+          <div class="flex items-center justify-between text-xs border-t border-slate-800/80 pt-2">
+            <span class="text-slate-400 font-semibold">Tiempo Invertido (2.5s/intento):</span>
+            <span id="timeSpentText" class="font-extrabold text-slate-200">0.0 seg</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nota Técnica -->
+      <div class="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-4 text-[11px] text-slate-400 leading-relaxed">
+        <strong class="text-slate-200">Mecánica RNG Exacta:</strong> Cada cofre ejecuta una tirada criptográfica independiente (<code class="text-amber-300">1 / 137,500</code>). En modo <strong class="text-purple-300">Escuadrón</strong>, cada apertura equivale a 4 cofres simultáneos de tu equipo.
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    // Parámetros oficiales del evento
+    const BASE_DENOMINATOR = 137500;
+    const INTERACT_DURATION_MS = 1500; // 1.5s abriendo cofre
+    const COOLDOWN_DURATION_MS = 1000; // 1.0s enfriamiento
+
+    // Estado de la aplicación
+    const state = {
+      mode: 'solo', // 'solo' | 'squad'
+      treasureHour: false,
+      soloChests: 0,
+      squadChests: 0,
+      attempts: 0,
+      tokensWon: 0,
+      isBusy: false,
+      soundEnabled: true,
+      lastQuoteIndex: -1
+    };
+
+    // Frases motivadoras cuando el cofre sale vacío
+    const MOTIVATIONAL_QUOTES = [
+      { title: "¡Cofre vacío, pero el botín sigue ahí!", text: "Cada cofre es una moneda nueva al aire. ¡El siguiente puede ser el elegido!" },
+      { title: "¡No te rindas, cazador!", text: "Los verdaderos piratas no abandonan la isla al primer intento. ¡Dale otra apertura!" },
+      { title: "¡Casi suena la campana dorada!", text: "La suerte no tiene memoria: este intento tuvo la misma chance que el cofre ganador." },
+      { title: "¡Sigue buscando en la isla!", text: "1 de cada 137,500 suena lejano hasta que te toca en el momento menos pensado." },
+      { title: "¡Buen intento, sigue farmeando!", text: "Recuerda que en Escuadrón multiplicas por 4 tus oportunidades en cada apertura." },
+      { title: "¡La perseverancia paga!", text: "Quienes consiguen el Token Pirata son los que nunca dejan de abrir un cofre más." },
+      { title: "¡Ese no era, pero vas con ritmo!", text: "Mantén la racha activa. ¡La Tienda Pirata gratuita está esperando tu nombre!" },
+      { title: "¡Nada por aquí... todavía!", text: "Activa la Hora del Tesoro si quieres duplicar tus probabilidades en cada tirada." },
+      { title: "¡Ánimo, leyenda!", text: "Incluso los premios más difíciles caen cuando menos lo esperas. ¡Abre el siguiente!" },
+      { title: "¡Un paso más en la búsqueda!", text: "El servidor vuelve a tirar los dados desde cero en tu próxima apertura. ¡Vamos!" }
+    ];
+
+    // Referencias del DOM
+    const el = {
+      modeSoloBtn: document.getElementById('modeSoloBtn'),
+      modeSquadBtn: document.getElementById('modeSquadBtn'),
+      treasureHourBtn: document.getElementById('treasureHourBtn'),
+      treasureHourDot: document.getElementById('treasureHourDot'),
+      currentOddsLabel: document.getElementById('currentOddsLabel'),
+      chestStage: document.getElementById('chestStage'),
+      chestWrapper: document.getElementById('chestWrapper'),
+      chestAura: document.getElementById('chestAura'),
+      chestBeam: document.getElementById('chestBeam'),
+      interactOverlay: document.getElementById('interactOverlay'),
+      ringProgressCircle: document.getElementById('ringProgressCircle'),
+      ringTimerText: document.getElementById('ringTimerText'),
+      openChestBtn: document.getElementById('openChestBtn'),
+      openBtnText: document.getElementById('openBtnText'),
+      statusText: document.getElementById('statusText'),
+      cooldownBar: document.getElementById('cooldownBar'),
+      resultContainer: document.getElementById('resultContainer'),
+      soloChestsCount: document.getElementById('soloChestsCount'),
+      squadChestsCount: document.getElementById('squadChestsCount'),
+      totalChestsCount: document.getElementById('totalChestsCount'),
+      cumulativeProbText: document.getElementById('cumulativeProbText'),
+      timeSpentText: document.getElementById('timeSpentText'),
+      tokensWonCount: document.getElementById('tokensWonCount'),
+      soundToggleBtn: document.getElementById('soundToggleBtn'),
+      soundIcon: document.getElementById('soundIcon'),
+      soundLabel: document.getElementById('soundLabel'),
+      resetBtn: document.getElementById('resetBtn')
+    };
+
+    // Audio sintetizado con Web Audio API
+    let audioCtx = null;
+    function getAudioCtx() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    function playOpeningHum(durationSec) {
+      if (!state.soundEnabled) return;
+      try {
+        const ctx = getAudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(190, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(520, ctx.currentTime + durationSec);
+
+        gain.gain.setValueAtTime(0.01, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.09, ctx.currentTime + durationSec * 0.8);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + durationSec);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + durationSec);
+      } catch (e) {}
+    }
+
+    function playEmptyChestSound() {
+      if (!state.soundEnabled) return;
+      try {
+        const ctx = getAudioCtx();
+        const notes = [330, 440];
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.08);
+          gain.gain.setValueAtTime(0.12, ctx.currentTime + idx * 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.08 + 0.25);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + idx * 0.08);
+          osc.stop(ctx.currentTime + idx * 0.08 + 0.26);
+        });
+      } catch (e) {}
+    }
+
+    function playTokenJackpotSound() {
+      if (!state.soundEnabled) return;
+      try {
+        const ctx = getAudioCtx();
+        const chord = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+        chord.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.07);
+          gain.gain.setValueAtTime(0.14, ctx.currentTime + idx * 0.07);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.07 + 0.85);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + idx * 0.07);
+          osc.stop(ctx.currentTime + idx * 0.07 + 0.9);
+        });
+      } catch (e) {}
+    }
+
+    // Generador aleatorio criptográfico exacto
+    function rollSingleChest(denominator) {
+      const array = new Uint32Array(1);
+      window.crypto.getRandomValues(array);
+      const roll = array[0] % denominator;
+      return roll === 0;
+    }
+
+    // Partículas visuales al abrir
+    function spawnSparkles(count, isToken) {
+      for (let i = 0; i < count; i++) {
+        const spark = document.createElement('div');
+        spark.className = 'sparkle';
+        const angle = (Math.PI * 2 * i) / count + (Math.random() * 0.4);
+        const dist = 55 + Math.random() * 65;
+        spark.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+        spark.style.setProperty('--dy', `${Math.sin(angle) * dist - 25}px`);
+        spark.style.left = '50%';
+        spark.style.top = '45%';
+        spark.style.background = isToken ? '#fef08a' : '#fbbf24';
+        el.chestStage.appendChild(spark);
+        setTimeout(() => spark.remove(), 1450);
+      }
+    }
+
+    // Actualizar UI de modos y estadísticas
+    function updateUI() {
+      const chestsPerAttempt = state.mode === 'squad' ? 4 : 1;
+      const denom = state.treasureHour ? BASE_DENOMINATOR / 2 : BASE_DENOMINATOR;
+      const singleProb = 1 / denom;
+      const attemptProb = 1 - Math.pow(1 - singleProb, chestsPerAttempt);
+
+      // Estilos de botones de equipo
+      if (state.mode === 'solo') {
+        el.modeSoloBtn.className = 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wide transition cursor-pointer bg-sky-500 text-slate-950 shadow-md shadow-sky-500/25';
+        el.modeSquadBtn.className = 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wide transition cursor-pointer text-slate-400 hover:text-white';
+      } else {
+        el.modeSquadBtn.className = 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wide transition cursor-pointer bg-purple-500 text-white shadow-md shadow-purple-500/30';
+        el.modeSoloBtn.className = 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs font-extrabold uppercase tracking-wide transition cursor-pointer text-slate-400 hover:text-white';
+      }
+
+      // Estilo Hora del Tesoro
+      if (state.treasureHour) {
+        el.treasureHourBtn.className = 'w-full sm:w-auto px-3.5 py-2 rounded-xl border border-amber-400 bg-amber-500/20 text-xs font-extrabold uppercase tracking-wide flex items-center justify-center gap-2 transition cursor-pointer text-amber-300 shadow-md shadow-amber-500/15';
+        el.treasureHourDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping';
+      } else {
+        el.treasureHourBtn.className = 'w-full sm:w-auto px-3.5 py-2 rounded-xl border border-slate-700 bg-slate-950/90 hover:border-amber-500/60 text-xs font-extrabold uppercase tracking-wide flex items-center justify-center gap-2 transition cursor-pointer text-slate-300';
+        el.treasureHourDot.className = 'w-2.5 h-2.5 rounded-full bg-slate-600';
+      }
+
+      // Texto de probabilidad actual
+      const effectiveDenom = Math.round(denom / chestsPerAttempt);
+      el.currentOddsLabel.textContent = `1 en ${effectiveDenom.toLocaleString('es-ES')} (${(attemptProb * 100).toFixed(5)}%)`;
+
+      // Contadores separados y total
+      const totalChests = state.soloChests + state.squadChests;
+      el.soloChestsCount.textContent = state.soloChests.toLocaleString('es-ES');
+      el.squadChestsCount.textContent = state.squadChests.toLocaleString('es-ES');
+      el.totalChestsCount.textContent = totalChests.toLocaleString('es-ES');
+      el.tokensWonCount.textContent = state.tokensWon.toLocaleString('es-ES');
+
+      // Probabilidad acumulada
+      const cumProb = 1 - Math.pow(1 - (1 / BASE_DENOMINATOR), totalChests);
+      el.cumulativeProbText.textContent = `${(cumProb * 100).toFixed(4)}%`;
+
+      // Tiempo invertido (2.5 segundos por apertura manual)
+      const totalSeconds = state.attempts * 2.5;
+      if (totalSeconds < 60) {
+        el.timeSpentText.textContent = `${totalSeconds.toFixed(1)} seg`;
+      } else if (totalSeconds < 3600) {
+        el.timeSpentText.textContent = `${(totalSeconds / 60).toFixed(1)} min`;
+      } else {
+        el.timeSpentText.textContent = `${(totalSeconds / 3600).toFixed(2)} hrs`;
+      }
+    }
+
+    // Mostrar tarjeta motivadora o de victoria
+    function renderResult(wonToken, chestsOpenedNow) {
+      if (wonToken) {
+        el.resultContainer.innerHTML = `
+          <div class="w-full rounded-xl border-2 border-yellow-300 bg-gradient-to-r from-amber-950/90 via-yellow-900/60 to-amber-950/90 p-4 text-center token-glow animate-pop-card">
+            <span class="inline-block px-2.5 py-0.5 rounded-full bg-yellow-400 text-slate-950 font-black text-[10px] uppercase tracking-widest mb-1">
+              ¡PREMIO MÍTICO DESBLOQUEADO!
+            </span>
+            <h4 class="text-lg fortnite-title text-yellow-300">¡CONSEGUISTE EL TOKEN PIRATA!</h4>
+            <p class="text-xs text-amber-100 mt-1">
+              Salió tras abrir <strong>${(state.soloChests + state.squadChests).toLocaleString('es-ES')}</strong> cofres en total. ¡Tienes 14 días de tienda gratis!
+            </p>
+          </div>
+        `;
+      } else {
+        let idx;
+        do {
+          idx = Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length);
+        } while (idx === state.lastQuoteIndex && MOTIVATIONAL_QUOTES.length > 1);
+        state.lastQuoteIndex = idx;
+
+        const quote = MOTIVATIONAL_QUOTES[idx];
+        const modeTag = chestsOpenedNow === 4
+          ? '<span class="text-purple-400 font-bold">+4 cofres (Escuadrón)</span>'
+          : '<span class="text-sky-400 font-bold">+1 cofre (Solitario)</span>';
+
+        el.resultContainer.innerHTML = `
+          <div class="w-full rounded-xl border border-slate-700/90 bg-slate-950/85 p-4 text-center animate-pop-card">
+            <div class="text-[11px] text-slate-400 mb-1">Cofre vacío • ${modeTag}</div>
+            <h4 class="text-sm font-black text-amber-300">${quote.title}</h4>
+            <p class="text-xs text-slate-300 mt-1">${quote.text}</p>
+          </div>
+        `;
+      }
+    }
+
+    // Flujo completo: 1.5s interacción + apertura + 1.0s enfriamiento
+    function triggerChestCycle() {
+      if (state.isBusy) return;
+      state.isBusy = true;
+
+      // Bloquear controles mientras corre el ciclo
+      el.openChestBtn.disabled = true;
+      el.openChestBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      el.chestWrapper.classList.remove('chest-open', 'is-cooldown');
+      el.chestWrapper.classList.add('is-opening');
+      el.chestAura.className = 'chest-aura opening';
+      el.chestBeam.className = 'chest-beam';
+
+      // Mostrar anillo circular [E]
+      el.interactOverlay.classList.remove('hidden');
+      const circumference = 213.6;
+      el.ringProgressCircle.style.strokeDashoffset = circumference;
+      el.statusText.textContent = 'Abriendo cofre (1.5s)...';
+      el.openBtnText.textContent = 'Abriendo...';
+
+      playOpeningHum(INTERACT_DURATION_MS / 1000);
+
+      const startTime = performance.now();
+
+      function animateInteract(now) {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / INTERACT_DURATION_MS, 1);
+        const remaining = Math.max(0, (INTERACT_DURATION_MS - elapsed) / 1000);
+
+        el.ringProgressCircle.style.strokeDashoffset = circumference * (1 - progress);
+        el.ringTimerText.textContent = `${remaining.toFixed(1)}s`;
+        el.cooldownBar.style.width = `${progress * 60}%`;
+        el.cooldownBar.className = 'h-full bg-sky-400 transition-none';
+
+        if (progress < 1) {
+          requestAnimationFrame(animateInteract);
+        } else {
+          finishOpeningAndStartCooldown();
+        }
+      }
+
+      requestAnimationFrame(animateInteract);
+    }
+
+    function finishOpeningAndStartCooldown() {
+      // Ocultar anillo y abrir tapa
+      el.interactOverlay.classList.add('hidden');
+      el.chestWrapper.classList.remove('is-opening');
+      el.chestWrapper.classList.add('chest-open');
+
+      // Calcular tiradas RNG
+      const chestsToRoll = state.mode === 'squad' ? 4 : 1;
+      const denom = state.treasureHour ? BASE_DENOMINATOR / 2 : BASE_DENOMINATOR;
+      let wonToken = false;
+
+      for (let i = 0; i < chestsToRoll; i++) {
+        if (rollSingleChest(denom)) {
+          wonToken = true;
+        }
+      }
+
+      // Actualizar contadores separados
+      if (state.mode === 'squad') {
+        state.squadChests += 4;
+      } else {
+        state.soloChests += 1;
+      }
+      state.attempts += 1;
+      if (wonToken) {
+        state.tokensWon += 1;
+      }
+
+      // Efectos visuales y sonoros
+      if (wonToken) {
+        el.chestAura.className = 'chest-aura opened-token';
+        el.chestBeam.className = 'chest-beam active token-beam';
+        spawnSparkles(26, true);
+        playTokenJackpotSound();
+      } else {
+        el.chestAura.className = 'chest-aura opened-empty';
+        el.chestBeam.className = 'chest-beam active';
+        spawnSparkles(10, false);
+        playEmptyChestSound();
+      }
+
+      updateUI();
+      renderResult(wonToken, chestsToRoll);
+
+      // Iniciar enfriamiento de 1.0 segundo
+      el.statusText.textContent = 'Enfriamiento de cofre (1.0s)...';
+      el.openBtnText.textContent = 'Enfriando...';
+      const cdStart = performance.now();
+
+      function animateCooldown(now) {
+        const elapsed = now - cdStart;
+        const progress = Math.min(elapsed / COOLDOWN_DURATION_MS, 1);
+
+        el.cooldownBar.style.width = `${60 + progress * 40}%`;
+        el.cooldownBar.className = 'h-full bg-amber-400 transition-none';
+
+        if (progress > 0.45 && !el.chestWrapper.classList.contains('is-cooldown')) {
+          el.chestWrapper.classList.remove('chest-open');
+          el.chestWrapper.classList.add('is-cooldown');
+          el.chestBeam.className = 'chest-beam';
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(animateCooldown);
+        } else {
+          resetReadyState();
+        }
+      }
+
+      requestAnimationFrame(animateCooldown);
+    }
+
+    function resetReadyState() {
+      state.isBusy = false;
+      el.chestWrapper.classList.remove('chest-open', 'is-opening', 'is-cooldown');
+      el.chestAura.className = 'chest-aura';
+      el.chestBeam.className = 'chest-beam';
+      el.openChestBtn.disabled = false;
+      el.openChestBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      el.openBtnText.textContent = 'Abrir Cofre';
+      el.statusText.textContent = 'Listo para abrir';
+      el.cooldownBar.style.width = '0%';
+    }
+
+    // Eventos de botones
+    el.openChestBtn.addEventListener('click', triggerChestCycle);
+    el.chestStage.addEventListener('click', triggerChestCycle);
+
+    el.modeSoloBtn.addEventListener('click', () => {
+      if (state.isBusy) return;
+      state.mode = 'solo';
+      updateUI();
+    });
+
+    el.modeSquadBtn.addEventListener('click', () => {
+      if (state.isBusy) return;
+      state.mode = 'squad';
+      updateUI();
+    });
+
+    el.treasureHourBtn.addEventListener('click', () => {
+      if (state.isBusy) return;
+      state.treasureHour = !state.treasureHour;
+      updateUI();
+    });
+
+    el.soundToggleBtn.addEventListener('click', () => {
+      state.soundEnabled = !state.soundEnabled;
+      el.soundIcon.textContent = state.soundEnabled ? '🔊' : '🔇';
+      el.soundLabel.textContent = state.soundEnabled ? 'Sonido ON' : 'Sonido OFF';
+    });
+
+    el.resetBtn.addEventListener('click', () => {
+      if (state.isBusy) return;
+      state.soloChests = 0;
+      state.squadChests = 0;
+      state.attempts = 0;
+      state.tokensWon = 0;
+      state.lastQuoteIndex = -1;
+      el.resultContainer.innerHTML = `
+        <div class="w-full rounded-xl border border-dashed border-slate-700/80 bg-slate-950/50 p-4 text-center">
+          <p class="text-xs font-semibold text-slate-400">
+            Contadores reiniciados. Pulsa <span class="text-amber-400 font-bold">Abrir Cofre</span> para comenzar de nuevo.
+          </p>
+        </div>
+      `;
+      updateUI();
+    });
+
+    // Atajos de teclado [E] y [Espacio]
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyE' || e.code === 'Space') {
+        if (document.activeElement && document.activeElement.tagName === 'BUTTON') {
+          document.activeElement.blur();
+        }
+        e.preventDefault();
+        triggerChestCycle();
+      }
+    });
+
+    // Inicializar
+    updateUI();
+  </script>
+</body>
+</html>
